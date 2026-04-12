@@ -509,7 +509,7 @@
 
     if (cards.some(c => c.suit === SUIT.S) && !isImmune(SUIT.S)) {
       boss.currentAttack = Math.max(0, boss.currentAttack - sumVal);
-      log(`♠効果: ボスの攻撃力が ${sumVal} 低下！(現在:${boss.currentAttack})`);
+      log(`♠効果: 王族の攻撃力が ${sumVal} 低下！(現在:${boss.currentAttack})`);
     }
     if (cards.some(c => c.suit === SUIT.H) && !isImmune(SUIT.H)) {
       let healCount = Math.min(sumVal, discardPile.length);
@@ -527,7 +527,7 @@
     }
 
     boss.currentHp -= damage;
-    log(`ボスに ${damage} のダメージ！`);
+    log(`王族に ${damage} のダメージ！`);
     discardPile.push(...cards);
 
     if (boss.currentHp <= 0) {
@@ -557,11 +557,11 @@
 
     } else {
       if (boss.currentAttack > 0) {
-        log(`ボスの攻撃！ ${boss.currentAttack} ダメージ！カードを捨てて防御しろ！`);
+        log(`王族の攻撃！ ${boss.currentAttack} ダメージ！カードを捨てて防御しろ！`);
         phase = 'DISCARD';
         checkGameOver();
       } else {
-        log(`ボスの攻撃力は0だ！ダメージを受けない！`);
+        log(`王族の攻撃力は0だ！ダメージを受けない！`);
         phase = 'PLAY';
         checkGameOver(); 
       }
@@ -664,7 +664,7 @@
     let sumVal = selectedCards.reduce((sum, c) => sum + (c.isJoker ? 0 : c.value), 0);
 
     if (phase === 'ANIMATING') {
-      info.innerText = 'ボスの撃破演出中...';
+      info.innerText = '王族の撃破演出中...';
       btn.innerText = 'プレイ';
       btn.disabled = true;
       btn.onclick = null;
@@ -679,9 +679,9 @@
       }
       
       info.innerText = selectedCards.length > 0 ? 
-        `合計ダメージ: ${sumVal} | 効果: ${effects.join(', ') || 'なし'}` : 'プレイするカードを選択';
+        `合計ダメージ: ${sumVal} | 効果: ${effects.join(', ') || 'なし'}` : '攻撃に使用するカードを選択';
       
-      btn.innerText = 'カードをプレイ';
+      btn.innerText = 'カードで攻撃';
       btn.disabled = !isValidPlay(selectedCards);
       
       btn.onclick = () => {
@@ -693,7 +693,7 @@
       info.innerText = selectedCards.length > 0 ? 
         `防御合計: ${sumVal} / ${boss.currentAttack} 必要` : `カードを捨てて防御しろ (${boss.currentAttack} ダメージ)`;
       
-      btn.innerText = 'カードを捨てる';
+      btn.innerText = 'カードで防御';
       btn.disabled = sumVal < boss.currentAttack;
       
       btn.onclick = () => {
