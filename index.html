@@ -93,7 +93,7 @@
     }
 
     #log-area {
-      height: 100px;
+      height: 120px;
       background-color: #000;
       border: 2px inset var(--border-color);
       padding: 10px;
@@ -235,14 +235,19 @@
 
   <footer>
     <div id="action-area">
-      <div id="selection-info">カードを選択してください</div>
-      <button id="btn-action">プレイ</button>
+      <div id="selection-info">セーブデータを読み込み中...</div>
+      <button id="btn-action" disabled>お待ちください</button>
     </div>
     <div id="hand-area"></div>
   </footer>
 </div>
 
-<script>
+<script type="module">
+  // クラウド保存用のライブラリをインポート
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+  import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+  import { getFirestore, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
   const img = new Image();
   img.onload = () => document.body.classList.add('has-image');
   img.onerror = () => document.body.classList.add('no-image');
@@ -262,6 +267,10 @@
     }
   }
 
+  // クラウド保存用変数
+  let db, auth, userId, appId;
+
+  // ゲーム状態
   let playerDeck = [];
   let enemyDeck = [];
   let discardPile = [];
@@ -271,6 +280,7 @@
   let messageLog = [];
   let selectedIndices = [];
 
+  // --- Utility Functions ---
   function shuffle(array) {
     for (let i = array.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
@@ -293,6 +303,8 @@
 
   function log(msg) {
     messageLog.push(msg);
+    if (messageLog.length > 30) messageLog.shift(); // ログの最大保持数
+    
     const el = document.getElementById('log-area');
     const div = document.createElement('div');
     div.innerText = msg;
@@ -300,6 +312,97 @@
     el.scrollTop = el.scrollHeight;
   }
 
+  function renderLogFull() {
+    const el = document.getElementById('log-area');
+    el.innerHTML = '';
+    messageLog.forEach(msg => {
+      const div = document.createElement('div');
+      div.innerText = msg;
+      el.appendChild(div);
+    });
+    el.scrollTop = el.scrollHeight;
+  }
+
+  // --- Cloud Storage / Initialization ---
+  async function initFirebase() {
+    try {
+      const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
+      if (!firebaseConfig || Object.keys(firebaseConfig).length === 0) {
+        initGame(); // プレビュー外など設定がない場合は新規スタート
+        return;
+      }
+
+      const app = initializeApp(firebaseConfig);
+      auth = getAuth(app);
+      db = getFirestore(app);
+      appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+
+      // 認証の実行
+      if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+        await signInWithCustomToken(auth, __initial_auth_token);
+      } else {
+        await signInAnonymously(auth);
+      }
+
+      onAuthStateChanged(auth, async (user) => {
+        if (user) {
+          userId = user.uid;
+          await loadGame();
+        }
+      });
+    } catch (e) {
+      console.warn("Storage init failed, starting new game.", e);
+      initGame();
+    }
+  }
+
+  async function saveGame() {
+    if (!userId || !db) return;
+    const docRef = doc(db, 'artifacts', appId, 'users', userId, 'gameState');
+    try {
+      const state = {
+        playerDeck: JSON.stringify(playerDeck),
+        enemyDeck: JSON.stringify(enemyDeck),
+        discardPile: JSON.stringify(discardPile),
+        hand: JSON.stringify(hand),
+        boss: JSON.stringify(boss),
+        phase,
+        messageLog: JSON.stringify(messageLog)
+      };
+      await setDoc(docRef, state);
+    } catch(e) {
+      console.error("Save error", e);
+    }
+  }
+
+  async function loadGame() {
+    if (!userId || !db) return;
+    const docRef = doc(db, 'artifacts', appId, 'users', userId, 'gameState');
+    try {
+      const docSnap = await getDoc(docRef);
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        playerDeck = JSON.parse(data.playerDeck);
+        enemyDeck = JSON.parse(data.enemyDeck);
+        discardPile = JSON.parse(data.discardPile);
+        hand = JSON.parse(data.hand);
+        boss = JSON.parse(data.boss);
+        phase = data.phase;
+        messageLog = JSON.parse(data.messageLog);
+        
+        messageLog.push("---- 中断データから再開しました ----");
+        renderLogFull();
+        updateUI();
+      } else {
+        initGame();
+      }
+    } catch(e) {
+      console.error("Load error", e);
+      initGame();
+    }
+  }
+
+  // --- Game Setup ---
   function initGame() {
     messageLog = [];
     document.getElementById('log-area').innerHTML = '';
@@ -333,6 +436,7 @@
     drawCards(8); 
     nextBoss();
     updateUI();
+    saveGame();
   }
 
   function nextBoss() {
@@ -356,6 +460,7 @@
     log(`新たな王族 [${getBossName(boss.suit, bossCard.value)}] が現れた！`);
   }
 
+  // --- Core Mechanics ---
   function drawCards(amount) {
     let drawn = 0;
     for (let i = 0; i < amount; i++) {
@@ -398,6 +503,25 @@
     return boss.suit === suit;
   }
 
+  // === 追加：敗北判定の統合処理 ===
+  function checkGameOver() {
+    if (phase === 'DISCARD') {
+      let maxDef = hand.reduce((sum, c) => sum + (c.isJoker ? 0 : c.value), 0);
+      if (maxDef < boss.currentAttack) {
+        log(`手札の合計値(${maxDef})が王族の攻撃力に満たない...`);
+        log("GAME OVER...");
+        phase = 'GAME_OVER';
+      }
+    } else if (phase === 'PLAY') {
+      // プレイフェイズで手札が0枚の場合、カードが出せないため敗北
+      if (hand.length === 0) {
+        log(`手札が0枚だ...反撃する手段がない！`);
+        log("GAME OVER...");
+        phase = 'GAME_OVER';
+      }
+    }
+  }
+
   function playCards(cards) {
     hand = hand.filter(c => !cards.includes(c));
 
@@ -407,7 +531,10 @@
       discardPile.push(...cards);
       let drawn = drawCards(8 - hand.length);
       if(drawn > 0) log(`手札を ${drawn} 枚補充した。`);
+      
+      checkGameOver();
       updateUI();
+      saveGame();
       return; 
     }
 
@@ -455,8 +582,12 @@
         }
         
         nextBoss();
-        if (phase !== 'GAME_CLEAR') phase = 'PLAY';
+        if (phase !== 'GAME_CLEAR') {
+          phase = 'PLAY';
+          checkGameOver(); // 新しい王族戦開始時に手札0ならゲームオーバー
+        }
         updateUI();
+        saveGame();
       }, 1000); 
 
     } else {
@@ -467,8 +598,10 @@
       } else {
         log(`王族の攻撃力は0だ！ダメージを受けない！`);
         phase = 'PLAY';
+        checkGameOver(); // 攻撃力が0で防御がスキップされたが手札0の場合
       }
       updateUI();
+      saveGame();
     }
   }
 
@@ -479,20 +612,13 @@
     
     log(`${defVal} のカードを捨てて攻撃を耐えた！`);
     phase = 'PLAY';
+    
+    checkGameOver(); // 追加：防御成功後に手札が0ならゲームオーバー
     updateUI();
+    saveGame();
   }
 
-  function checkGameOver() {
-    if (phase === 'DISCARD') {
-      let maxDef = hand.reduce((sum, c) => sum + (c.isJoker ? 0 : c.value), 0);
-      if (maxDef < boss.currentAttack) {
-        log(`手札の合計値(${maxDef})が王族の攻撃力に満たない...`);
-        log("GAME OVER...");
-        phase = 'GAME_OVER';
-      }
-    }
-  }
-
+  // --- Rendering & UI ---
   function createCardDOM(card, index) {
     const div = document.createElement('div');
     div.className = 'card';
@@ -569,7 +695,6 @@
     const btn = document.getElementById('btn-action');
     const info = document.getElementById('selection-info');
     
-    // バグ修正: undefinedな要素を取り除く堅牢な処理に変更
     let selectedCards = selectedIndices.map(i => hand[i]).filter(c => c !== undefined);
     let sumVal = selectedCards.reduce((sum, c) => sum + (c.isJoker ? 0 : c.value), 0);
 
@@ -594,7 +719,6 @@
       btn.innerText = 'カードで攻撃';
       btn.disabled = !isValidPlay(selectedCards);
       
-      // バグ修正: アクション実行前に選択状態をクリアする
       btn.onclick = () => {
         const targetCards = [...selectedCards];
         selectedIndices = [];
@@ -602,12 +726,11 @@
       };
     } else if (phase === 'DISCARD') {
       info.innerText = selectedCards.length > 0 ? 
-        `防御合計: ${sumVal} / ${boss.currentAttack} 必要` : `カードを捨てて防御 (${boss.currentAttack} ダメージ)`;
+        `防御合計: ${sumVal} / ${boss.currentAttack} 必要` : `カードを捨てて防御しろ (${boss.currentAttack} ダメージ)`;
       
       btn.innerText = 'カードで防御';
       btn.disabled = sumVal < boss.currentAttack;
       
-      // バグ修正: アクション実行前に選択状態をクリアする
       btn.onclick = () => {
         const targetCards = [...selectedCards];
         selectedIndices = [];
@@ -617,11 +740,14 @@
       info.innerText = phase === 'GAME_CLEAR' ? '🎉 YOU WIN! 🎉' : '💀 YOU LOSE... 💀';
       btn.innerText = 'もう一度遊ぶ';
       btn.disabled = false;
-      btn.onclick = () => initGame();
+      btn.onclick = () => {
+        initGame();
+      };
     }
   }
 
-  initGame();
+  // アプリケーション起動
+  initFirebase();
 
 </script>
 </body>
