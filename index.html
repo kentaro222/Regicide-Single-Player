@@ -1,3 +1,4 @@
+```html
 <!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -235,19 +236,14 @@
 
   <footer>
     <div id="action-area">
-      <div id="selection-info">セーブデータを読み込み中...</div>
-      <button id="btn-action" disabled>お待ちください</button>
+      <div id="selection-info">カードを選択してください</div>
+      <button id="btn-action">プレイ</button>
     </div>
     <div id="hand-area"></div>
   </footer>
 </div>
 
-<script type="module">
-  // クラウド保存用のライブラリをインポート
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-  import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-  import { getFirestore, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-
+<script>
   const img = new Image();
   img.onload = () => document.body.classList.add('has-image');
   img.onerror = () => document.body.classList.add('no-image');
@@ -258,6 +254,7 @@
   const SUIT_NAMES = ['ハート', 'ダイヤ', 'スペード', 'クラブ'];
   const RANK_STR = ['A','2','3','4','5','6','7','8','9','10','J','Q','K'];
   const BOSS_NAMES = { 11: 'プリンス', 12: 'クイーン', 13: 'キング' };
+  const SAVE_KEY = 'regicide_save_data';
 
   class Card {
     constructor(suit, value, isJoker = false) {
@@ -267,10 +264,6 @@
     }
   }
 
-  // クラウド保存用変数
-  let db, auth, userId, appId;
-
-  // ゲーム状態
   let playerDeck = [];
   let enemyDeck = [];
   let discardPile = [];
@@ -303,7 +296,7 @@
 
   function log(msg) {
     messageLog.push(msg);
-    if (messageLog.length > 30) messageLog.shift(); // ログの最大保持数
+    if (messageLog.length > 30) messageLog.shift(); 
     
     const el = document.getElementById('log-area');
     const div = document.createElement('div');
@@ -323,83 +316,58 @@
     el.scrollTop = el.scrollHeight;
   }
 
-  // --- Cloud Storage / Initialization ---
-  async function initFirebase() {
-    try {
-      const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
-      if (!firebaseConfig || Object.keys(firebaseConfig).length === 0) {
-        initGame(); // プレビュー外など設定がない場合は新規スタート
-        return;
-      }
+  // --- Local Storage Data Management ---
+  function saveGame() {
+    // 撃破演出中は保存をスキップし、演出終了後の状態を保存させる
+    if (phase === 'ANIMATING') return; 
 
-      const app = initializeApp(firebaseConfig);
-      auth = getAuth(app);
-      db = getFirestore(app);
-      appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-
-      // 認証の実行
-      if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-        await signInWithCustomToken(auth, __initial_auth_token);
-      } else {
-        await signInAnonymously(auth);
-      }
-
-      onAuthStateChanged(auth, async (user) => {
-        if (user) {
-          userId = user.uid;
-          await loadGame();
-        }
-      });
-    } catch (e) {
-      console.warn("Storage init failed, starting new game.", e);
-      initGame();
-    }
+    const state = {
+      playerDeck,
+      enemyDeck,
+      discardPile,
+      hand,
+      boss,
+      phase,
+      messageLog
+    };
+    localStorage.setItem(SAVE_KEY, JSON.stringify(state));
   }
 
-  async function saveGame() {
-    if (!userId || !db) return;
-    const docRef = doc(db, 'artifacts', appId, 'users', userId, 'gameState');
-    try {
-      const state = {
-        playerDeck: JSON.stringify(playerDeck),
-        enemyDeck: JSON.stringify(enemyDeck),
-        discardPile: JSON.stringify(discardPile),
-        hand: JSON.stringify(hand),
-        boss: JSON.stringify(boss),
-        phase,
-        messageLog: JSON.stringify(messageLog)
-      };
-      await setDoc(docRef, state);
-    } catch(e) {
-      console.error("Save error", e);
-    }
-  }
-
-  async function loadGame() {
-    if (!userId || !db) return;
-    const docRef = doc(db, 'artifacts', appId, 'users', userId, 'gameState');
-    try {
-      const docSnap = await getDoc(docRef);
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        playerDeck = JSON.parse(data.playerDeck);
-        enemyDeck = JSON.parse(data.enemyDeck);
-        discardPile = JSON.parse(data.discardPile);
-        hand = JSON.parse(data.hand);
-        boss = JSON.parse(data.boss);
-        phase = data.phase;
-        messageLog = JSON.parse(data.messageLog);
+  function loadGame() {
+    const saved = localStorage.getItem(SAVE_KEY);
+    if (saved) {
+      try {
+        const state = JSON.parse(saved);
         
+        // オブジェクトをCardインスタンスとして復元するヘルパー
+        const reviveCard = (c) => new Card(c.suit, c.value, c.isJoker);
+        
+        playerDeck = state.playerDeck.map(reviveCard);
+        enemyDeck = state.enemyDeck.map(reviveCard);
+        discardPile = state.discardPile.map(reviveCard);
+        hand = state.hand.map(reviveCard);
+        
+        if (state.boss) {
+          boss = state.boss;
+          boss.card = reviveCard(boss.card);
+        } else {
+          boss = null;
+        }
+
+        phase = state.phase;
+        messageLog = state.messageLog || [];
+        selectedIndices = [];
+
         messageLog.push("---- 中断データから再開しました ----");
         renderLogFull();
         updateUI();
-      } else {
-        initGame();
+        return true;
+      } catch (e) {
+        console.error("Save data is corrupted", e);
+        return false;
       }
-    } catch(e) {
-      console.error("Load error", e);
-      initGame();
     }
+    return false;
   }
 
   // --- Game Setup ---
@@ -503,7 +471,6 @@
     return boss.suit === suit;
   }
 
-  // === 追加：敗北判定の統合処理 ===
   function checkGameOver() {
     if (phase === 'DISCARD') {
       let maxDef = hand.reduce((sum, c) => sum + (c.isJoker ? 0 : c.value), 0);
@@ -513,7 +480,6 @@
         phase = 'GAME_OVER';
       }
     } else if (phase === 'PLAY') {
-      // プレイフェイズで手札が0枚の場合、カードが出せないため敗北
       if (hand.length === 0) {
         log(`手札が0枚だ...反撃する手段がない！`);
         log("GAME OVER...");
@@ -544,7 +510,7 @@
 
     if (cards.some(c => c.suit === SUIT.S) && !isImmune(SUIT.S)) {
       boss.currentAttack = Math.max(0, boss.currentAttack - sumVal);
-      log(`♠効果: 王族の攻撃力が ${sumVal} 低下！(現在:${boss.currentAttack})`);
+      log(`♠効果: ボスの攻撃力が ${sumVal} 低下！(現在:${boss.currentAttack})`);
     }
     if (cards.some(c => c.suit === SUIT.H) && !isImmune(SUIT.H)) {
       let healCount = Math.min(sumVal, discardPile.length);
@@ -562,7 +528,7 @@
     }
 
     boss.currentHp -= damage;
-    log(`王族に ${damage} のダメージ！`);
+    log(`ボスに ${damage} のダメージ！`);
     discardPile.push(...cards);
 
     if (boss.currentHp <= 0) {
@@ -584,7 +550,7 @@
         nextBoss();
         if (phase !== 'GAME_CLEAR') {
           phase = 'PLAY';
-          checkGameOver(); // 新しい王族戦開始時に手札0ならゲームオーバー
+          checkGameOver(); 
         }
         updateUI();
         saveGame();
@@ -592,13 +558,13 @@
 
     } else {
       if (boss.currentAttack > 0) {
-        log(`王族の攻撃！ ${boss.currentAttack} ダメージ！カードを捨てて防御しろ！`);
+        log(`ボスの攻撃！ ${boss.currentAttack} ダメージ！カードを捨てて防御しろ！`);
         phase = 'DISCARD';
         checkGameOver();
       } else {
-        log(`王族の攻撃力は0だ！ダメージを受けない！`);
+        log(`ボスの攻撃力は0だ！ダメージを受けない！`);
         phase = 'PLAY';
-        checkGameOver(); // 攻撃力が0で防御がスキップされたが手札0の場合
+        checkGameOver(); 
       }
       updateUI();
       saveGame();
@@ -613,7 +579,7 @@
     log(`${defVal} のカードを捨てて攻撃を耐えた！`);
     phase = 'PLAY';
     
-    checkGameOver(); // 追加：防御成功後に手札が0ならゲームオーバー
+    checkGameOver(); 
     updateUI();
     saveGame();
   }
@@ -699,7 +665,7 @@
     let sumVal = selectedCards.reduce((sum, c) => sum + (c.isJoker ? 0 : c.value), 0);
 
     if (phase === 'ANIMATING') {
-      info.innerText = '王族の撃破演出中...';
+      info.innerText = 'ボスの撃破演出中...';
       btn.innerText = 'プレイ';
       btn.disabled = true;
       btn.onclick = null;
@@ -714,9 +680,9 @@
       }
       
       info.innerText = selectedCards.length > 0 ? 
-        `合計ダメージ: ${sumVal} | 効果: ${effects.join(', ') || 'なし'}` : '攻撃に使用するカードを選択';
+        `合計ダメージ: ${sumVal} | 効果: ${effects.join(', ') || 'なし'}` : 'プレイするカードを選択';
       
-      btn.innerText = 'カードで攻撃';
+      btn.innerText = 'カードをプレイ';
       btn.disabled = !isValidPlay(selectedCards);
       
       btn.onclick = () => {
@@ -728,7 +694,7 @@
       info.innerText = selectedCards.length > 0 ? 
         `防御合計: ${sumVal} / ${boss.currentAttack} 必要` : `カードを捨てて防御しろ (${boss.currentAttack} ダメージ)`;
       
-      btn.innerText = 'カードで防御';
+      btn.innerText = 'カードを捨てる';
       btn.disabled = sumVal < boss.currentAttack;
       
       btn.onclick = () => {
@@ -741,14 +707,20 @@
       btn.innerText = 'もう一度遊ぶ';
       btn.disabled = false;
       btn.onclick = () => {
+        localStorage.removeItem(SAVE_KEY); // リセット時はセーブデータを消去
         initGame();
       };
     }
   }
 
-  // アプリケーション起動
-  initFirebase();
+  // アプリケーション起動時にロードを試み、なければ新規開始
+  if (!loadGame()) {
+    initGame();
+  }
 
 </script>
 </body>
 </html>
+
+
+```
