@@ -50,6 +50,7 @@
     .status-info {
       font-size: 14px;
       text-align: right;
+      line-height: 1.4;
     }
 
     #boss-area {
@@ -138,13 +139,26 @@
       box-shadow: none;
     }
 
-    #hand-area {
+    .area-label {
+      font-size: 14px;
+      color: #888;
+      margin-top: 10px;
+      text-align: center;
+      letter-spacing: 2px;
+    }
+    
+    #tavern-area, #hand-area {
       display: flex;
       flex-wrap: wrap;
       justify-content: center;
       gap: 10px;
+      padding-top: 5px;
+    }
+    #tavern-area {
+      min-height: 80px;
+    }
+    #hand-area {
       min-height: 100px;
-      padding-top: 15px;
     }
 
     .card {
@@ -165,7 +179,7 @@
       transition: transform 0.1s, box-shadow 0.1s;
       position: relative;
     }
-    .card.red { color: #ff6b6b; }
+    .card.red { color: #ff5555; }
     .card.selected {
       transform: translateY(-15px);
       box-shadow: 0 4px 8px rgba(0,0,0,0.8);
@@ -212,7 +226,8 @@
     <h1>REGICIDE</h1>
     <div class="status-info">
       山札: <span id="deck-count">0</span> | 捨て札: <span id="discard-count">0</span><br>
-      敵残り: <span id="enemy-count">12</span>/12
+      敵残り: <span id="enemy-count">12</span>/12<br>
+      敵接近中: <span id="approaching-enemies"></span>
     </div>
   </header>
 
@@ -238,7 +253,12 @@
       <div id="selection-info">カードを選択してください</div>
       <button id="btn-action">プレイ</button>
     </div>
+    
+    <div class="area-label">HAND (手札)</div>
     <div id="hand-area"></div>
+
+    <div class="area-label">TAVERN (酒場)</div>
+    <div id="tavern-area"></div>
   </footer>
 </div>
 
@@ -251,6 +271,8 @@
   const SUIT = { H: 0, D: 1, S: 2, C: 3 }; 
   const SUIT_ICONS = ['♥', '♦', '♠', '♣']; 
   const SUIT_NAMES = ['ハート', 'ダイヤ', 'スペード', 'クラブ'];
+  // 黒背景でも視認性の良い色（赤、オレンジ、青、緑）
+  const SUIT_COLORS = ['#ff5555', '#ffb84d', '#55aaff', '#55ff55']; 
   const RANK_STR = ['A','2','3','4','5','6','7','8','9','10','J','Q','K'];
   const BOSS_NAMES = { 11: 'プリンス', 12: 'クイーン', 13: 'キング' };
   const SAVE_KEY = 'regicide_save_data';
@@ -258,7 +280,7 @@
   class Card {
     constructor(suit, value, isJoker = false) {
       this.suit = suit;
-      this.value = value;
+      this.value = value; 
       this.isJoker = isJoker;
     }
   }
@@ -267,10 +289,13 @@
   let enemyDeck = [];
   let discardPile = [];
   let hand = [];
+  let tavernJokers = []; 
   let boss = null;
   let phase = 'PLAY'; 
   let messageLog = [];
+  
   let selectedIndices = [];
+  let selectedJokerIndex = -1; 
 
   // --- Utility Functions ---
   function shuffle(array) {
@@ -291,6 +316,14 @@
 
   function getBossName(suit, value) {
     return `${BOSS_NAMES[value]}・オブ・${SUIT_NAMES[suit]}`;
+  }
+
+  function getCardValue(card) {
+    if (card.isJoker) return 0;
+    if (card.value === 11) return 10; 
+    if (card.value === 12) return 15; 
+    if (card.value === 13) return 20; 
+    return card.value;                
   }
 
   function log(msg) {
@@ -317,7 +350,6 @@
 
   // --- Local Storage Data Management ---
   function saveGame() {
-    // 撃破演出中は保存をスキップし、演出終了後の状態を保存させる
     if (phase === 'ANIMATING') return; 
 
     const state = {
@@ -325,6 +357,7 @@
       enemyDeck,
       discardPile,
       hand,
+      tavernJokers,
       boss,
       phase,
       messageLog
@@ -338,13 +371,13 @@
       try {
         const state = JSON.parse(saved);
         
-        // オブジェクトをCardインスタンスとして復元するヘルパー
         const reviveCard = (c) => new Card(c.suit, c.value, c.isJoker);
         
         playerDeck = state.playerDeck.map(reviveCard);
         enemyDeck = state.enemyDeck.map(reviveCard);
         discardPile = state.discardPile.map(reviveCard);
         hand = state.hand.map(reviveCard);
+        tavernJokers = (state.tavernJokers || []).map(reviveCard);
         
         if (state.boss) {
           boss = state.boss;
@@ -356,6 +389,7 @@
         phase = state.phase;
         messageLog = state.messageLog || [];
         selectedIndices = [];
+        selectedJokerIndex = -1;
 
         messageLog.push("---- 中断データから再開しました ----");
         renderLogFull();
@@ -380,9 +414,9 @@
         playerDeck.push(new Card(s, v));
       }
     }
-    playerDeck.push(new Card(-1, 0, true));
-    playerDeck.push(new Card(-1, 0, true));
     shuffle(playerDeck);
+
+    tavernJokers = [new Card(-1, 0, true), new Card(-1, 0, true)];
 
     enemyDeck = [];
     ['J', 'Q', 'K'].forEach((rank, idx) => {
@@ -398,6 +432,7 @@
     hand = [];
     phase = 'PLAY';
     selectedIndices = [];
+    selectedJokerIndex = -1;
 
     log("ゲームスタート！レジサイドへようこそ。");
     drawCards(8); 
@@ -449,20 +484,28 @@
 
   function isValidPlay(cards) {
     if (cards.length === 0) return false;
-    if (cards.length === 1) return true;
+    if (cards.length === 1) return true; 
+    
     if (cards.some(c => c.isJoker)) return false; 
 
-    let sum = cards.reduce((acc, c) => acc + c.value, 0);
-    if (sum > 10) return false;
-
+    const numAces = cards.filter(c => c.value === 1).length;
     const nonAces = cards.filter(c => c.value !== 1);
-    if (nonAces.length > 1) {
+
+    if (nonAces.length === 1 && numAces > 0) return true;
+    if (nonAces.length === 0 && numAces > 0) return true;
+
+    if (nonAces.length === cards.length) {
       const val = nonAces[0].value;
-      for (let c of nonAces) {
-        if (c.value !== val) return false;
-      }
+      if (val >= 11) return false; 
+
+      const allSame = nonAces.every(c => c.value === val);
+      if (!allSame) return false;
+
+      let sum = nonAces.reduce((acc, c) => acc + c.value, 0);
+      if (sum <= 10) return true;
     }
-    return true;
+    
+    return false;
   }
 
   function isImmune(suit) {
@@ -472,14 +515,14 @@
 
   function checkGameOver() {
     if (phase === 'DISCARD') {
-      let maxDef = hand.reduce((sum, c) => sum + (c.isJoker ? 0 : c.value), 0);
+      let maxDef = hand.reduce((sum, c) => sum + getCardValue(c), 0);
       if (maxDef < boss.currentAttack) {
         log(`手札の合計値(${maxDef})が王族の攻撃力に満たない...`);
         log("GAME OVER...");
         phase = 'GAME_OVER';
       }
     } else if (phase === 'PLAY') {
-      if (hand.length === 0) {
+      if (hand.length === 0 && tavernJokers.length === 0) {
         log(`手札が0枚だ...反撃する手段がない！`);
         log("GAME OVER...");
         phase = 'GAME_OVER';
@@ -488,12 +531,12 @@
   }
 
   function playCards(cards) {
-    hand = hand.filter(c => !cards.includes(c));
-
     if (cards.some(c => c.isJoker)) {
+      const playedJoker = tavernJokers.splice(selectedJokerIndex, 1)[0];
+      discardPile.push(playedJoker);
+
       log("JOKER！王族の耐性が無効化され、攻撃をスキップした！");
       boss.immunityCancelled = true;
-      discardPile.push(...cards);
       let drawn = drawCards(8 - hand.length);
       if(drawn > 0) log(`手札を ${drawn} 枚補充した。`);
       
@@ -503,7 +546,9 @@
       return; 
     }
 
-    let sumVal = cards.reduce((sum, c) => sum + c.value, 0);
+    hand = hand.filter(c => !cards.includes(c));
+
+    let sumVal = cards.reduce((sum, c) => sum + getCardValue(c), 0);
     let isClubActive = cards.some(c => c.suit === SUIT.C) && !isImmune(SUIT.C);
     let damage = isClubActive ? sumVal * 2 : sumVal;
 
@@ -571,7 +616,7 @@
   }
 
   function discardCards(cards) {
-    let defVal = cards.reduce((sum, c) => sum + (c.isJoker ? 0 : c.value), 0);
+    let defVal = cards.reduce((sum, c) => sum + getCardValue(c), 0);
     hand = hand.filter(c => !cards.includes(c));
     discardPile.push(...cards);
     
@@ -584,7 +629,7 @@
   }
 
   // --- Rendering & UI ---
-  function createCardDOM(card, index) {
+  function createCardDOM(card, index, isTavern = false) {
     const div = document.createElement('div');
     div.className = 'card';
     if (card && (card.suit === SUIT.H || card.suit === SUIT.D)) div.classList.add('red');
@@ -605,18 +650,34 @@
     }
     div.innerHTML = `<span class="fallback-text">${text}</span>`;
 
-    if (index >= 0) {
-      div.onclick = () => {
-        if (phase !== 'PLAY' && phase !== 'DISCARD') return;
+    div.onclick = () => {
+      if (phase !== 'PLAY' && phase !== 'DISCARD') return;
+      
+      if (isTavern) {
+        if (phase === 'DISCARD') return;
+
+        if (selectedJokerIndex === index) {
+          selectedJokerIndex = -1;
+        } else {
+          selectedJokerIndex = index;
+          selectedIndices = []; 
+        }
+      } else {
+        selectedJokerIndex = -1; 
+
         const pos = selectedIndices.indexOf(index);
         if (pos >= 0) selectedIndices.splice(pos, 1);
         else selectedIndices.push(index);
-        updateUI();
-      };
-      if (selectedIndices.includes(index)) {
-        div.classList.add('selected');
       }
+      updateUI();
+    };
+
+    if (isTavern && selectedJokerIndex === index) {
+      div.classList.add('selected');
+    } else if (!isTavern && selectedIndices.includes(index)) {
+      div.classList.add('selected');
     }
+
     return div;
   }
 
@@ -625,12 +686,33 @@
     document.getElementById('discard-count').innerText = discardPile.length;
     document.getElementById('enemy-count').innerText = enemyDeck.length + (boss && phase !== 'GAME_CLEAR' ? 1 : 0);
 
+    // --- 敵接近中の表示 ---
+    const approachingEl = document.getElementById('approaching-enemies');
+    if (boss && phase !== 'GAME_CLEAR') {
+      const currentRank = boss.card.value;
+      const upcomingBosses = enemyDeck.filter(c => c.value === currentRank);
+      upcomingBosses.sort((a, b) => a.suit - b.suit);
+      
+      if (upcomingBosses.length > 0) {
+        approachingEl.innerHTML = upcomingBosses.map(c => {
+          // 色付きスートアイコンの適用
+          return `<span style="color: ${SUIT_COLORS[c.suit]}; margin-right: 4px; font-size: 16px;">${SUIT_ICONS[c.suit]}</span>`;
+        }).join('');
+      } else {
+        approachingEl.innerHTML = '<span style="color: #666;">なし</span>';
+      }
+    } else {
+      approachingEl.innerText = '-';
+    }
+
     const bossContainer = document.getElementById('boss-card-container');
-    
     if (phase !== 'ANIMATING') {
       bossContainer.innerHTML = '';
       if (boss && phase !== 'GAME_CLEAR') {
-        bossContainer.appendChild(createCardDOM(boss.card, -1));
+        const bossCardDom = createCardDOM(boss.card, -1, false);
+        bossCardDom.onclick = null; 
+        bossCardDom.classList.remove('selected');
+        bossContainer.appendChild(bossCardDom);
       }
     }
 
@@ -647,21 +729,34 @@
       if (boss.immunityCancelled) {
         immunityEl.innerHTML = `<s style="color:gray">${getSuitIcon(boss.suit)} (無効化済)</s>`;
       } else {
-        immunityEl.innerText = getSuitIcon(boss.suit);
+        // 耐性アイコンにも同じカラーパレットを適用
+        immunityEl.innerHTML = `<span style="color: ${SUIT_COLORS[boss.suit]};">${getSuitIcon(boss.suit)}</span>`;
       }
     }
+
+    const tavernContainer = document.getElementById('tavern-area');
+    tavernContainer.innerHTML = '';
+    tavernJokers.forEach((card, idx) => {
+      tavernContainer.appendChild(createCardDOM(card, idx, true));
+    });
 
     const handContainer = document.getElementById('hand-area');
     handContainer.innerHTML = '';
     hand.forEach((card, idx) => {
-      handContainer.appendChild(createCardDOM(card, idx));
+      handContainer.appendChild(createCardDOM(card, idx, false));
     });
 
     const btn = document.getElementById('btn-action');
     const info = document.getElementById('selection-info');
     
-    let selectedCards = selectedIndices.map(i => hand[i]).filter(c => c !== undefined);
-    let sumVal = selectedCards.reduce((sum, c) => sum + (c.isJoker ? 0 : c.value), 0);
+    let selectedCards = [];
+    if (selectedJokerIndex !== -1) {
+      selectedCards = [tavernJokers[selectedJokerIndex]];
+    } else {
+      selectedCards = selectedIndices.map(i => hand[i]).filter(c => c !== undefined);
+    }
+
+    let sumVal = selectedCards.reduce((sum, c) => sum + getCardValue(c), 0);
 
     if (phase === 'ANIMATING') {
       info.innerText = '王族の撃破演出中...';
@@ -670,7 +765,7 @@
       btn.onclick = null;
     } else if (phase === 'PLAY') {
       let effects = [];
-      if (selectedCards.some(c => c.isJoker)) effects.push("耐性無効化");
+      if (selectedCards.some(c => c.isJoker)) effects.push("耐性無効化,手札補充,攻撃スキップ");
       else {
         if (selectedCards.some(c => c.suit === SUIT.H)) effects.push("♥回復");
         if (selectedCards.some(c => c.suit === SUIT.D)) effects.push("♦ドロー");
@@ -687,6 +782,7 @@
       btn.onclick = () => {
         const targetCards = [...selectedCards];
         selectedIndices = [];
+        selectedJokerIndex = -1;
         playCards(targetCards);
       };
     } else if (phase === 'DISCARD') {
@@ -694,11 +790,12 @@
         `防御合計: ${sumVal} / ${boss.currentAttack} 必要` : `カードを捨てて防御しろ (${boss.currentAttack} ダメージ)`;
       
       btn.innerText = 'カードで防御';
-      btn.disabled = sumVal < boss.currentAttack;
+      btn.disabled = sumVal < boss.currentAttack || selectedCards.length === 0;
       
       btn.onclick = () => {
         const targetCards = [...selectedCards];
         selectedIndices = [];
+        selectedJokerIndex = -1;
         discardCards(targetCards);
       };
     } else if (phase === 'GAME_OVER' || phase === 'GAME_CLEAR') {
@@ -706,13 +803,12 @@
       btn.innerText = 'もう一度遊ぶ';
       btn.disabled = false;
       btn.onclick = () => {
-        localStorage.removeItem(SAVE_KEY); // リセット時はセーブデータを消去
+        localStorage.removeItem(SAVE_KEY); 
         initGame();
       };
     }
   }
 
-  // アプリケーション起動時にロードを試み、なければ新規開始
   if (!loadGame()) {
     initGame();
   }
