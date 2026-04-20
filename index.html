@@ -40,12 +40,40 @@
       border-bottom: 2px solid var(--border-color);
       padding-bottom: 10px;
     }
+    .title-group {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
     h1 {
       margin: 0;
       font-size: 24px;
       color: var(--accent-color);
       text-shadow: 2px 2px 0 #222;
       letter-spacing: 2px;
+    }
+    /* 追加：丸囲みの？アイコンスタイル */
+    .guide-icon {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      border: 2px solid #666;
+      color: #666;
+      text-decoration: none;
+      font-family: sans-serif;
+      font-size: 14px;
+      font-weight: bold;
+      transition: all 0.2s;
+    }
+    .guide-icon:hover {
+      color: var(--accent-color);
+      border-color: var(--accent-color);
+      text-shadow: 0 0 5px rgba(255, 215, 0, 0.5);
+      box-shadow: 0 0 5px rgba(255, 215, 0, 0.3);
+      transform: scale(1.1);
     }
     .status-info {
       font-size: 14px;
@@ -223,7 +251,10 @@
 
 <div id="game-container">
   <header>
-    <h1>REGICIDE</h1>
+    <div class="title-group">
+      <h1>REGICIDE</h1>
+      <a href="regicide_guide.html" target="_blank" class="guide-icon" title="プレイングガイド（遊び方）">?</a>
+    </div>
     <div class="status-info">
       山札: <span id="deck-count">0</span> | 捨て札: <span id="discard-count">0</span><br>
       敵残り: <span id="enemy-count">12</span>/12<br>
@@ -271,7 +302,6 @@
   const SUIT = { H: 0, D: 1, S: 2, C: 3 }; 
   const SUIT_ICONS = ['♥', '♦', '♠', '♣']; 
   const SUIT_NAMES = ['ハート', 'ダイヤ', 'スペード', 'クラブ'];
-  // 黒背景でも視認性の良い色（赤、オレンジ、青、緑）
   const SUIT_COLORS = ['#ff5555', '#ffb84d', '#55aaff', '#55ff55']; 
   const RANK_STR = ['A','2','3','4','5','6','7','8','9','10','J','Q','K'];
   const BOSS_NAMES = { 11: 'プリンス', 12: 'クイーン', 13: 'キング' };
@@ -695,7 +725,6 @@
       
       if (upcomingBosses.length > 0) {
         approachingEl.innerHTML = upcomingBosses.map(c => {
-          // 色付きスートアイコンの適用
           return `<span style="color: ${SUIT_COLORS[c.suit]}; margin-right: 4px; font-size: 16px;">${SUIT_ICONS[c.suit]}</span>`;
         }).join('');
       } else {
@@ -729,7 +758,6 @@
       if (boss.immunityCancelled) {
         immunityEl.innerHTML = `<s style="color:gray">${getSuitIcon(boss.suit)} (無効化済)</s>`;
       } else {
-        // 耐性アイコンにも同じカラーパレットを適用
         immunityEl.innerHTML = `<span style="color: ${SUIT_COLORS[boss.suit]};">${getSuitIcon(boss.suit)}</span>`;
       }
     }
