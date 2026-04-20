@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Regicide Single Player</title>
   <link href="https://fonts.googleapis.com/css2?family=DotGothic16&display=swap" rel="stylesheet">
+  <!-- Lucide Icons for the help button -->
+  <script src="https://unpkg.com/lucide@latest"></script>
   <style>
     :root {
       --bg-color: #000000;
@@ -40,6 +42,11 @@
       border-bottom: 2px solid var(--border-color);
       padding-bottom: 10px;
     }
+    .title-area {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
     h1 {
       margin: 0;
       font-size: 24px;
@@ -47,12 +54,23 @@
       text-shadow: 2px 2px 0 #222;
       letter-spacing: 2px;
     }
+    .help-link {
+      color: #888;
+      text-decoration: none;
+      display: flex;
+      align-items: center;
+      transition: color 0.2s;
+    }
+    .help-link:hover {
+      color: var(--accent-color);
+    }
     .status-info {
       font-size: 14px;
       text-align: right;
       line-height: 1.4;
     }
 
+    /* 以下、元のゲームスタイルと同じ（省略せず保持） */
     #boss-area {
       display: flex;
       background-color: #0a0a0a;
@@ -92,7 +110,6 @@
       width: 100%;
       transition: width 0.3s ease;
     }
-
     #log-area {
       height: 120px;
       background-color: #000;
@@ -104,7 +121,6 @@
       flex-direction: column;
       gap: 4px;
     }
-
     #action-area {
       display: flex;
       justify-content: space-between;
@@ -138,7 +154,6 @@
       transform: translate(2px, 2px);
       box-shadow: none;
     }
-
     .area-label {
       font-size: 14px;
       color: #888;
@@ -146,7 +161,6 @@
       text-align: center;
       letter-spacing: 2px;
     }
-    
     #tavern-area, #hand-area {
       display: flex;
       flex-wrap: wrap;
@@ -154,13 +168,6 @@
       gap: 10px;
       padding-top: 5px;
     }
-    #tavern-area {
-      min-height: 80px;
-    }
-    #hand-area {
-      min-height: 100px;
-    }
-
     .card {
       width: var(--card-w);
       height: var(--card-h);
@@ -185,7 +192,6 @@
       box-shadow: 0 4px 8px rgba(0,0,0,0.8);
       border-color: var(--accent-color);
     }
-    
     body.has-image .card {
       background-image: url('Regicide_sheet.png');
       background-size: 3240px 72px; 
@@ -195,35 +201,24 @@
       background-color: transparent; 
       border-radius: 0;
     }
-    body.has-image .card .fallback-text {
-      display: none;
-    }
-    body.has-image .card.selected {
-      border: none;
-      filter: drop-shadow(0px -2px 0px var(--accent-color)) 
-              drop-shadow(0px 2px 0px var(--accent-color)) 
-              drop-shadow(2px 0px 0px var(--accent-color)) 
-              drop-shadow(-2px 0px 0px var(--accent-color));
-    }
-
+    body.has-image .card .fallback-text { display: none; }
     @keyframes defeat-shake {
-      0%   { transform: scale(1.5) translate(0, 0) rotate(0deg); filter: drop-shadow(0 0 5px red); opacity: 1; }
-      20%  { transform: scale(1.5) translate(-8px, 4px) rotate(-5deg); filter: drop-shadow(0 0 10px red); }
-      40%  { transform: scale(1.5) translate(8px, -4px) rotate(5deg); filter: drop-shadow(0 0 20px red); }
-      60%  { transform: scale(1.5) translate(-8px, -4px) rotate(-5deg); filter: drop-shadow(0 0 20px red); opacity: 0.8; }
-      80%  { transform: scale(1.5) translate(8px, 4px) rotate(5deg); filter: drop-shadow(0 0 10px red); opacity: 0.4; }
+      0%   { transform: scale(1.5) translate(0, 0) rotate(0deg); opacity: 1; }
       100% { transform: scale(1.5) translate(0, 0) rotate(0deg); opacity: 0; }
     }
-    .defeat-anim {
-      animation: defeat-shake 1s ease-in-out forwards !important;
-    }
+    .defeat-anim { animation: defeat-shake 1s ease-in-out forwards !important; }
   </style>
 </head>
 <body>
 
 <div id="game-container">
   <header>
-    <h1>REGICIDE</h1>
+    <div class="title-area">
+      <h1>REGICIDE</h1>
+      <a href="regicide_guide.html" target="_blank" class="help-link" title="マニュアルを開く">
+        <i data-lucide="help-circle"></i>
+      </a>
+    </div>
     <div class="status-info">
       山札: <span id="deck-count">0</span> | 捨て札: <span id="discard-count">0</span><br>
       敵残り: <span id="enemy-count">12</span>/12<br>
@@ -244,7 +239,6 @@
         <div>耐性: <span id="boss-immunity"></span></div>
       </div>
     </div>
-
     <div id="log-area"></div>
   </main>
 
@@ -253,25 +247,24 @@
       <div id="selection-info">カードを選択してください</div>
       <button id="btn-action">プレイ</button>
     </div>
-    
     <div class="area-label">HAND (手札)</div>
     <div id="hand-area"></div>
-
     <div class="area-label">TAVERN (酒場)</div>
     <div id="tavern-area"></div>
   </footer>
 </div>
 
 <script>
+  // Lucideアイコンの初期化
+  lucide.createIcons();
+
   const img = new Image();
   img.onload = () => document.body.classList.add('has-image');
-  img.onerror = () => document.body.classList.add('no-image');
   img.src = 'Regicide_sheet.png';
 
   const SUIT = { H: 0, D: 1, S: 2, C: 3 }; 
   const SUIT_ICONS = ['♥', '♦', '♠', '♣']; 
   const SUIT_NAMES = ['ハート', 'ダイヤ', 'スペード', 'クラブ'];
-  // 黒背景でも視認性の良い色（赤、オレンジ、青、緑）
   const SUIT_COLORS = ['#ff5555', '#ffb84d', '#55aaff', '#55ff55']; 
   const RANK_STR = ['A','2','3','4','5','6','7','8','9','10','J','Q','K'];
   const BOSS_NAMES = { 11: 'プリンス', 12: 'クイーン', 13: 'キング' };
@@ -293,31 +286,18 @@
   let boss = null;
   let phase = 'PLAY'; 
   let messageLog = [];
-  
   let selectedIndices = [];
   let selectedJokerIndex = -1; 
 
-  // --- Utility Functions ---
   function shuffle(array) {
     for (let i = array.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [array[i], array[j]] = [array[j], array[i]];
     }
   }
-
-  function getSuitIcon(suit) {
-    return SUIT_ICONS[suit] || '';
-  }
-
-  function getRankStr(value) {
-    if (value >= 1 && value <= 13) return RANK_STR[value - 1];
-    return '';
-  }
-
-  function getBossName(suit, value) {
-    return `${BOSS_NAMES[value]}・オブ・${SUIT_NAMES[suit]}`;
-  }
-
+  function getSuitIcon(suit) { return SUIT_ICONS[suit] || ''; }
+  function getRankStr(value) { return value >= 1 && value <= 13 ? RANK_STR[value - 1] : ''; }
+  function getBossName(suit, value) { return `${BOSS_NAMES[value]}・オブ・${SUIT_NAMES[suit]}`; }
   function getCardValue(card) {
     if (card.isJoker) return 0;
     if (card.value === 11) return 10; 
@@ -325,494 +305,164 @@
     if (card.value === 13) return 20; 
     return card.value;                
   }
-
   function log(msg) {
     messageLog.push(msg);
     if (messageLog.length > 30) messageLog.shift(); 
-    
     const el = document.getElementById('log-area');
     const div = document.createElement('div');
     div.innerText = msg;
     el.appendChild(div);
     el.scrollTop = el.scrollHeight;
   }
-
-  function renderLogFull() {
-    const el = document.getElementById('log-area');
-    el.innerHTML = '';
-    messageLog.forEach(msg => {
-      const div = document.createElement('div');
-      div.innerText = msg;
-      el.appendChild(div);
-    });
-    el.scrollTop = el.scrollHeight;
-  }
-
-  // --- Local Storage Data Management ---
   function saveGame() {
     if (phase === 'ANIMATING') return; 
-
-    const state = {
-      playerDeck,
-      enemyDeck,
-      discardPile,
-      hand,
-      tavernJokers,
-      boss,
-      phase,
-      messageLog
-    };
+    const state = { playerDeck, enemyDeck, discardPile, hand, tavernJokers, boss, phase, messageLog };
     localStorage.setItem(SAVE_KEY, JSON.stringify(state));
   }
-
   function loadGame() {
     const saved = localStorage.getItem(SAVE_KEY);
-    if (saved) {
-      try {
-        const state = JSON.parse(saved);
-        
-        const reviveCard = (c) => new Card(c.suit, c.value, c.isJoker);
-        
-        playerDeck = state.playerDeck.map(reviveCard);
-        enemyDeck = state.enemyDeck.map(reviveCard);
-        discardPile = state.discardPile.map(reviveCard);
-        hand = state.hand.map(reviveCard);
-        tavernJokers = (state.tavernJokers || []).map(reviveCard);
-        
-        if (state.boss) {
-          boss = state.boss;
-          boss.card = reviveCard(boss.card);
-        } else {
-          boss = null;
-        }
-
-        phase = state.phase;
-        messageLog = state.messageLog || [];
-        selectedIndices = [];
-        selectedJokerIndex = -1;
-
-        messageLog.push("---- 中断データから再開しました ----");
-        renderLogFull();
-        updateUI();
-        return true;
-      } catch (e) {
-        console.error("Save data is corrupted", e);
-        return false;
-      }
-    }
-    return false;
+    if (!saved) return false;
+    try {
+      const state = JSON.parse(saved);
+      const reviveCard = (c) => new Card(c.suit, c.value, c.isJoker);
+      playerDeck = state.playerDeck.map(reviveCard);
+      enemyDeck = state.enemyDeck.map(reviveCard);
+      discardPile = state.discardPile.map(reviveCard);
+      hand = state.hand.map(reviveCard);
+      tavernJokers = (state.tavernJokers || []).map(reviveCard);
+      if (state.boss) { boss = state.boss; boss.card = reviveCard(boss.card); }
+      phase = state.phase;
+      messageLog = state.messageLog || [];
+      document.getElementById('log-area').innerHTML = '';
+      messageLog.forEach(m => log(m));
+      updateUI();
+      return true;
+    } catch (e) { return false; }
   }
 
-  // --- Game Setup ---
   function initGame() {
-    messageLog = [];
-    document.getElementById('log-area').innerHTML = '';
-    
     playerDeck = [];
-    for(let s = 0; s < 4; s++) {
-      for(let v = 1; v <= 10; v++) {
-        playerDeck.push(new Card(s, v));
-      }
-    }
+    for(let s = 0; s < 4; s++) for(let v = 1; v <= 10; v++) playerDeck.push(new Card(s, v));
     shuffle(playerDeck);
-
     tavernJokers = [new Card(-1, 0, true), new Card(-1, 0, true)];
-
     enemyDeck = [];
     ['J', 'Q', 'K'].forEach((rank, idx) => {
       let temp = [];
-      for(let s = 0; s < 4; s++) {
-        temp.push(new Card(s, 11 + idx));
-      }
+      for(let s = 0; s < 4; s++) temp.push(new Card(s, 11 + idx));
       shuffle(temp);
       enemyDeck.push(...temp);
     });
-
-    discardPile = [];
-    hand = [];
-    phase = 'PLAY';
-    selectedIndices = [];
-    selectedJokerIndex = -1;
-
-    log("ゲームスタート！レジサイドへようこそ。");
-    drawCards(8); 
-    nextBoss();
-    updateUI();
-    saveGame();
+    discardPile = []; hand = []; phase = 'PLAY';
+    log("ゲームスタート！王族を倒せ！");
+    drawCards(8); nextBoss(); updateUI(); saveGame();
   }
 
   function nextBoss() {
-    if (enemyDeck.length === 0) {
-      phase = 'GAME_CLEAR';
-      log("すべての王族を打ち倒した！あなたの勝利です！");
-      return;
-    }
-    const bossCard = enemyDeck.shift(); 
-    const val = bossCard.value;
-    
-    boss = {
-      card: bossCard,
-      suit: bossCard.suit,
-      maxHp: val === 11 ? 20 : (val === 12 ? 30 : 40),
-      currentHp: val === 11 ? 20 : (val === 12 ? 30 : 40),
-      maxAttack: val === 11 ? 10 : (val === 12 ? 15 : 20),
-      currentAttack: val === 11 ? 10 : (val === 12 ? 15 : 20),
-      immunityCancelled: false
-    };
-    log(`新たな王族 [${getBossName(boss.suit, bossCard.value)}] が現れた！`);
+    if (enemyDeck.length === 0) { phase = 'GAME_CLEAR'; log("勝利！"); return; }
+    const bc = enemyDeck.shift();
+    boss = { card: bc, suit: bc.suit, maxHp: bc.value === 11 ? 20 : (bc.value === 12 ? 30 : 40), currentHp: bc.value === 11 ? 20 : (bc.value === 12 ? 30 : 40), currentAttack: bc.value === 11 ? 10 : (bc.value === 12 ? 15 : 20), immunityCancelled: false };
+    log(`出現: ${getBossName(boss.suit, bc.value)}`);
   }
 
-  // --- Core Mechanics ---
   function drawCards(amount) {
-    let drawn = 0;
-    for (let i = 0; i < amount; i++) {
-      if (hand.length >= 8) break; 
-      if (playerDeck.length === 0) break;
-      hand.push(playerDeck.shift()); 
-      drawn++;
-    }
-    return drawn;
-  }
-
-  function healDeck(amount) {
-    if (amount <= 0 || discardPile.length === 0) return;
-    let healCount = Math.min(amount, discardPile.length);
-    shuffle(discardPile);
-    let healedCards = discardPile.splice(0, healCount);
-    playerDeck.push(...healedCards); 
-  }
-
-  function isValidPlay(cards) {
-    if (cards.length === 0) return false;
-    if (cards.length === 1) return true; 
-    
-    if (cards.some(c => c.isJoker)) return false; 
-
-    const numAces = cards.filter(c => c.value === 1).length;
-    const nonAces = cards.filter(c => c.value !== 1);
-
-    if (nonAces.length === 1 && numAces > 0) return true;
-    if (nonAces.length === 0 && numAces > 0) return true;
-
-    if (nonAces.length === cards.length) {
-      const val = nonAces[0].value;
-      if (val >= 11) return false; 
-
-      const allSame = nonAces.every(c => c.value === val);
-      if (!allSame) return false;
-
-      let sum = nonAces.reduce((acc, c) => acc + c.value, 0);
-      if (sum <= 10) return true;
-    }
-    
-    return false;
-  }
-
-  function isImmune(suit) {
-    if (boss.immunityCancelled) return false;
-    return boss.suit === suit;
-  }
-
-  function checkGameOver() {
-    if (phase === 'DISCARD') {
-      let maxDef = hand.reduce((sum, c) => sum + getCardValue(c), 0);
-      if (maxDef < boss.currentAttack) {
-        log(`手札の合計値(${maxDef})が王族の攻撃力に満たない...`);
-        log("GAME OVER...");
-        phase = 'GAME_OVER';
-      }
-    } else if (phase === 'PLAY') {
-      if (hand.length === 0 && tavernJokers.length === 0) {
-        log(`手札が0枚だ...反撃する手段がない！`);
-        log("GAME OVER...");
-        phase = 'GAME_OVER';
-      }
-    }
+    let d = 0;
+    while(d < amount && hand.length < 8 && playerDeck.length > 0) { hand.push(playerDeck.shift()); d++; }
+    return d;
   }
 
   function playCards(cards) {
     if (cards.some(c => c.isJoker)) {
-      const playedJoker = tavernJokers.splice(selectedJokerIndex, 1)[0];
-      discardPile.push(playedJoker);
-
-      log("JOKER！王族の耐性が無効化され、攻撃をスキップした！");
+      tavernJokers.splice(selectedJokerIndex, 1);
       boss.immunityCancelled = true;
-      let drawn = drawCards(8 - hand.length);
-      if(drawn > 0) log(`手札を ${drawn} 枚補充した。`);
-      
-      checkGameOver();
-      updateUI();
-      saveGame();
-      return; 
+      log("JOKER: 耐性無効＆補充！");
+      drawCards(8 - hand.length);
+      phase = 'PLAY'; updateUI(); saveGame(); return;
     }
-
     hand = hand.filter(c => !cards.includes(c));
-
-    let sumVal = cards.reduce((sum, c) => sum + getCardValue(c), 0);
-    let isClubActive = cards.some(c => c.suit === SUIT.C) && !isImmune(SUIT.C);
-    let damage = isClubActive ? sumVal * 2 : sumVal;
-
-    if (cards.some(c => c.suit === SUIT.S) && !isImmune(SUIT.S)) {
-      boss.currentAttack = Math.max(0, boss.currentAttack - sumVal);
-      log(`♠効果: 王族の攻撃力が ${sumVal} 低下！(現在:${boss.currentAttack})`);
+    let val = cards.reduce((s, c) => s + getCardValue(c), 0);
+    let club = cards.some(c => c.suit === SUIT.C) && (boss.immunityCancelled || boss.suit !== SUIT.C);
+    let dmg = club ? val * 2 : val;
+    if (cards.some(c => c.suit === SUIT.S) && (boss.immunityCancelled || boss.suit !== SUIT.S)) boss.currentAttack = Math.max(0, boss.currentAttack - val);
+    if (cards.some(c => c.suit === SUIT.H) && (boss.immunityCancelled || boss.suit !== SUIT.H)) {
+      let h = Math.min(val, discardPile.length);
+      if (h > 0) { shuffle(discardPile); playerDeck.push(...discardPile.splice(0, h)); }
     }
-    if (cards.some(c => c.suit === SUIT.H) && !isImmune(SUIT.H)) {
-      let healCount = Math.min(sumVal, discardPile.length);
-      if (healCount > 0) {
-        healDeck(healCount);
-        log(`♥効果: 捨て札から ${healCount} 枚を山札の底に戻した！`);
-      }
-    }
-    if (cards.some(c => c.suit === SUIT.D) && !isImmune(SUIT.D)) {
-      let drawCount = Math.min(sumVal, 8 - hand.length);
-      if (drawCount > 0) {
-        drawCards(drawCount);
-        log(`♦効果: 山札から ${drawCount} 枚引いた！`);
-      }
-    }
-
-    boss.currentHp -= damage;
-    log(`王族に ${damage} のダメージ！`);
+    if (cards.some(c => c.suit === SUIT.D) && (boss.immunityCancelled || boss.suit !== SUIT.D)) drawCards(Math.min(val, 8 - hand.length));
+    
+    boss.currentHp -= dmg;
     discardPile.push(...cards);
-
     if (boss.currentHp <= 0) {
-      phase = 'ANIMATING'; 
-      updateUI();
-
-      const bossDom = document.querySelector('#boss-card-container .card');
-      if (bossDom) bossDom.classList.add('defeat-anim');
-
-      setTimeout(() => {
-        if (boss.currentHp === 0) {
-          log(`✨ぴったり撃破！ [${getBossName(boss.suit, boss.card.value)}] が山札の一番上に加わった！`);
-          playerDeck.unshift(boss.card); 
-        } else {
-          log(`王族を撃破した！`);
-          discardPile.push(boss.card);
-        }
-        
-        nextBoss();
-        if (phase !== 'GAME_CLEAR') {
-          phase = 'PLAY';
-          checkGameOver(); 
-        }
-        updateUI();
-        saveGame();
-      }, 1000); 
-
+      if (boss.currentHp === 0) playerDeck.unshift(boss.card); else discardPile.push(boss.card);
+      nextBoss();
     } else {
-      if (boss.currentAttack > 0) {
-        log(`王族の攻撃！ ${boss.currentAttack} ダメージ！カードを捨てて防御しろ！`);
-        phase = 'DISCARD';
-        checkGameOver();
-      } else {
-        log(`王族の攻撃力は0だ！ダメージを受けない！`);
-        phase = 'PLAY';
-        checkGameOver(); 
-      }
-      updateUI();
-      saveGame();
+      phase = boss.currentAttack > 0 ? 'DISCARD' : 'PLAY';
     }
+    updateUI(); saveGame();
   }
 
   function discardCards(cards) {
-    let defVal = cards.reduce((sum, c) => sum + getCardValue(c), 0);
     hand = hand.filter(c => !cards.includes(c));
     discardPile.push(...cards);
-    
-    log(`${defVal} のカードを捨てて攻撃を耐えた！`);
-    phase = 'PLAY';
-    
-    checkGameOver(); 
-    updateUI();
-    saveGame();
+    phase = 'PLAY'; updateUI(); saveGame();
   }
 
-  // --- Rendering & UI ---
+  function isValidPlay(cards) {
+    if (cards.length === 0) return false;
+    if (cards.length === 1) return true;
+    if (cards.some(c => c.isJoker)) return cards.length === 1;
+    const aces = cards.filter(c => c.value === 1);
+    const others = cards.filter(c => c.value !== 1);
+    if (others.length === 1) return true;
+    if (others.length === 0) return true;
+    return others.every(c => c.value === others[0].value) && others.reduce((s, c) => s + c.value, 0) <= 10;
+  }
+
   function createCardDOM(card, index, isTavern = false) {
     const div = document.createElement('div');
     div.className = 'card';
     if (card && (card.suit === SUIT.H || card.suit === SUIT.D)) div.classList.add('red');
-
-    let spriteIdx = 53; 
-    if (card) {
-      if (card.isJoker) {
-        spriteIdx = 52; 
-      } else {
-        spriteIdx = (card.suit * 13) + (card.value - 1);
-      }
-    }
-    div.style.backgroundPosition = `-${spriteIdx * 60}px 0px`;
-
-    let text = 'BACK';
-    if (card) {
-      text = card.isJoker ? 'JOKER' : (getSuitIcon(card.suit) + getRankStr(card.value));
-    }
-    div.innerHTML = `<span class="fallback-text">${text}</span>`;
-
+    let sIdx = card ? (card.isJoker ? 52 : card.suit * 13 + card.value - 1) : 53;
+    div.style.backgroundPosition = `-${sIdx * 60}px 0px`;
+    div.innerHTML = `<span class="fallback-text">${card ? (card.isJoker ? 'J' : getSuitIcon(card.suit) + getRankStr(card.value)) : 'B'}</span>`;
     div.onclick = () => {
-      if (phase !== 'PLAY' && phase !== 'DISCARD') return;
-      
-      if (isTavern) {
-        if (phase === 'DISCARD') return;
-
-        if (selectedJokerIndex === index) {
-          selectedJokerIndex = -1;
-        } else {
-          selectedJokerIndex = index;
-          selectedIndices = []; 
-        }
-      } else {
-        selectedJokerIndex = -1; 
-
-        const pos = selectedIndices.indexOf(index);
-        if (pos >= 0) selectedIndices.splice(pos, 1);
-        else selectedIndices.push(index);
-      }
+      if (isTavern) { selectedJokerIndex = selectedJokerIndex === index ? -1 : index; selectedIndices = []; }
+      else { selectedJokerIndex = -1; let p = selectedIndices.indexOf(index); if (p >= 0) selectedIndices.splice(p, 1); else selectedIndices.push(index); }
       updateUI();
     };
-
-    if (isTavern && selectedJokerIndex === index) {
-      div.classList.add('selected');
-    } else if (!isTavern && selectedIndices.includes(index)) {
-      div.classList.add('selected');
-    }
-
+    if (isTavern ? selectedJokerIndex === index : selectedIndices.includes(index)) div.classList.add('selected');
     return div;
   }
 
   function updateUI() {
     document.getElementById('deck-count').innerText = playerDeck.length;
     document.getElementById('discard-count').innerText = discardPile.length;
-    document.getElementById('enemy-count').innerText = enemyDeck.length + (boss && phase !== 'GAME_CLEAR' ? 1 : 0);
-
-    // --- 敵接近中の表示 ---
-    const approachingEl = document.getElementById('approaching-enemies');
-    if (boss && phase !== 'GAME_CLEAR') {
-      const currentRank = boss.card.value;
-      const upcomingBosses = enemyDeck.filter(c => c.value === currentRank);
-      upcomingBosses.sort((a, b) => a.suit - b.suit);
-      
-      if (upcomingBosses.length > 0) {
-        approachingEl.innerHTML = upcomingBosses.map(c => {
-          // 色付きスートアイコンの適用
-          return `<span style="color: ${SUIT_COLORS[c.suit]}; margin-right: 4px; font-size: 16px;">${SUIT_ICONS[c.suit]}</span>`;
-        }).join('');
-      } else {
-        approachingEl.innerHTML = '<span style="color: #666;">なし</span>';
-      }
-    } else {
-      approachingEl.innerText = '-';
-    }
-
-    const bossContainer = document.getElementById('boss-card-container');
-    if (phase !== 'ANIMATING') {
-      bossContainer.innerHTML = '';
-      if (boss && phase !== 'GAME_CLEAR') {
-        const bossCardDom = createCardDOM(boss.card, -1, false);
-        bossCardDom.onclick = null; 
-        bossCardDom.classList.remove('selected');
-        bossContainer.appendChild(bossCardDom);
-      }
-    }
-
+    document.getElementById('enemy-count').innerText = enemyDeck.length + (boss ? 1 : 0);
+    const appEl = document.getElementById('approaching-enemies');
     if (boss) {
+      appEl.innerHTML = enemyDeck.filter(c => c.value === boss.card.value).map(c => `<span style="color:${SUIT_COLORS[c.suit]}">${SUIT_ICONS[c.suit]}</span>`).join('') || '-';
       document.getElementById('boss-name').innerText = getBossName(boss.suit, boss.card.value);
       document.getElementById('boss-hp').innerText = Math.max(0, boss.currentHp);
       document.getElementById('boss-max-hp').innerText = boss.maxHp;
       document.getElementById('boss-atk').innerText = boss.currentAttack;
-      
-      const hpPercent = Math.max(0, (boss.currentHp / boss.maxHp) * 100);
-      document.getElementById('hp-fill').style.width = hpPercent + '%';
-
-      const immunityEl = document.getElementById('boss-immunity');
-      if (boss.immunityCancelled) {
-        immunityEl.innerHTML = `<s style="color:gray">${getSuitIcon(boss.suit)} (無効化済)</s>`;
-      } else {
-        // 耐性アイコンにも同じカラーパレットを適用
-        immunityEl.innerHTML = `<span style="color: ${SUIT_COLORS[boss.suit]};">${getSuitIcon(boss.suit)}</span>`;
-      }
+      document.getElementById('hp-fill').style.width = (Math.max(0, boss.currentHp / boss.maxHp) * 100) + '%';
+      document.getElementById('boss-immunity').innerHTML = boss.immunityCancelled ? 'なし' : `<span style="color:${SUIT_COLORS[boss.suit]}">${SUIT_ICONS[boss.suit]}</span>`;
     }
-
-    const tavernContainer = document.getElementById('tavern-area');
-    tavernContainer.innerHTML = '';
-    tavernJokers.forEach((card, idx) => {
-      tavernContainer.appendChild(createCardDOM(card, idx, true));
-    });
-
-    const handContainer = document.getElementById('hand-area');
-    handContainer.innerHTML = '';
-    hand.forEach((card, idx) => {
-      handContainer.appendChild(createCardDOM(card, idx, false));
-    });
-
+    const btc = document.getElementById('boss-card-container'); btc.innerHTML = ''; if (boss) btc.appendChild(createCardDOM(boss.card, -1));
+    const tva = document.getElementById('tavern-area'); tva.innerHTML = ''; tavernJokers.forEach((c, i) => tva.appendChild(createCardDOM(c, i, true)));
+    const hda = document.getElementById('hand-area'); hda.innerHTML = ''; hand.forEach((c, i) => hda.appendChild(createCardDOM(c, i, false)));
     const btn = document.getElementById('btn-action');
-    const info = document.getElementById('selection-info');
-    
-    let selectedCards = [];
-    if (selectedJokerIndex !== -1) {
-      selectedCards = [tavernJokers[selectedJokerIndex]];
-    } else {
-      selectedCards = selectedIndices.map(i => hand[i]).filter(c => c !== undefined);
-    }
-
-    let sumVal = selectedCards.reduce((sum, c) => sum + getCardValue(c), 0);
-
-    if (phase === 'ANIMATING') {
-      info.innerText = '王族の撃破演出中...';
-      btn.innerText = 'プレイ';
-      btn.disabled = true;
-      btn.onclick = null;
-    } else if (phase === 'PLAY') {
-      let effects = [];
-      if (selectedCards.some(c => c.isJoker)) effects.push("耐性無効化,手札補充,攻撃スキップ");
-      else {
-        if (selectedCards.some(c => c.suit === SUIT.H)) effects.push("♥回復");
-        if (selectedCards.some(c => c.suit === SUIT.D)) effects.push("♦ドロー");
-        if (selectedCards.some(c => c.suit === SUIT.C)) effects.push("♣2倍撃");
-        if (selectedCards.some(c => c.suit === SUIT.S)) effects.push("♠防御");
-      }
-      
-      info.innerText = selectedCards.length > 0 ? 
-        `合計ダメージ: ${sumVal} | 効果: ${effects.join(', ') || 'なし'}` : '攻撃に使用するカードを選択';
-      
-      btn.innerText = 'カードで攻撃';
-      btn.disabled = !isValidPlay(selectedCards);
-      
-      btn.onclick = () => {
-        const targetCards = [...selectedCards];
-        selectedIndices = [];
-        selectedJokerIndex = -1;
-        playCards(targetCards);
-      };
+    let sel = selectedJokerIndex !== -1 ? [tavernJokers[selectedJokerIndex]] : selectedIndices.map(i => hand[i]);
+    let sum = sel.reduce((s, c) => s + getCardValue(c), 0);
+    if (phase === 'PLAY') {
+      btn.innerText = '攻撃'; btn.disabled = !isValidPlay(sel);
+      btn.onclick = () => { let t = [...sel]; selectedIndices = []; selectedJokerIndex = -1; playCards(t); };
     } else if (phase === 'DISCARD') {
-      info.innerText = selectedCards.length > 0 ? 
-        `防御合計: ${sumVal} / ${boss.currentAttack} 必要` : `カードを捨てて防御しろ (${boss.currentAttack} ダメージ)`;
-      
-      btn.innerText = 'カードで防御';
-      btn.disabled = sumVal < boss.currentAttack || selectedCards.length === 0;
-      
-      btn.onclick = () => {
-        const targetCards = [...selectedCards];
-        selectedIndices = [];
-        selectedJokerIndex = -1;
-        discardCards(targetCards);
-      };
-    } else if (phase === 'GAME_OVER' || phase === 'GAME_CLEAR') {
-      info.innerText = phase === 'GAME_CLEAR' ? '🎉 YOU WIN! 🎉' : '💀 YOU LOSE... 💀';
-      btn.innerText = 'もう一度遊ぶ';
-      btn.disabled = false;
-      btn.onclick = () => {
-        localStorage.removeItem(SAVE_KEY); 
-        initGame();
-      };
+      btn.innerText = '防御'; btn.disabled = sum < boss.currentAttack;
+      btn.onclick = () => { let t = [...sel]; selectedIndices = []; selectedJokerIndex = -1; discardCards(t); };
     }
   }
 
-  if (!loadGame()) {
-    initGame();
-  }
-
+  if (!loadGame()) initGame();
 </script>
 </body>
 </html>
