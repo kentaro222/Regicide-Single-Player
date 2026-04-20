@@ -52,7 +52,7 @@
       text-shadow: 2px 2px 0 #222;
       letter-spacing: 2px;
     }
-    /* 追加：丸囲みの？アイコンスタイル */
+    
     .guide-icon {
       display: flex;
       justify-content: center;
@@ -66,15 +66,12 @@
       font-family: sans-serif;
       font-size: 14px;
       font-weight: bold;
-      transition: all 0.2s;
+      transition: transform 0.2s;
     }
     .guide-icon:hover {
-      color: var(--accent-color);
-      border-color: var(--accent-color);
-      text-shadow: 0 0 5px rgba(255, 215, 0, 0.5);
-      box-shadow: 0 0 5px rgba(255, 215, 0, 0.3);
       transform: scale(1.1);
     }
+    
     .status-info {
       font-size: 14px;
       text-align: right;
